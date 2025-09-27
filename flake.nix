@@ -15,7 +15,7 @@
   };
 
   outputs = { self, nixpkgs, nixos-generators, deploy-rs }: {
-    lib.deployOMatic = { templatesDir, overlaysDir, moduleArgs }:
+    lib.deployOMatic = { templatesDir, overlaysDir, moduleArgs, nixpkgsConfig }:
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
         templateNames = dirsInDir templatesDir;
@@ -74,8 +74,6 @@
           (name: type: type == "directory" || lib.hasSuffix ".nix" name)
           (builtins.readDir overlaysDir));
 
-        nixpkgsConfig = (import ./nixpkgs-global-config.nix);
-
         # gives a list of hosts from a single template
         templateHosts = name:
           let
@@ -98,20 +96,6 @@
           lib.attrNames (lib.filterAttrs (_: type: type == "directory")
             (builtins.readDir dirname));
       in {
-        devShells = forAllSystems (system:
-          let pkgs = pkgsFor system;
-          in {
-            default = pkgs.mkShell {
-              packages = with pkgs; [
-                OVMF.fd
-                findutils
-                gnumake
-                nixfmt-classic
-                rsync
-              ];
-            };
-          });
-
         nixosConfigurations = mapValues mkNixos hosts;
 
         # expose disk images as packages
