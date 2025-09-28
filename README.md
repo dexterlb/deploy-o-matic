@@ -60,29 +60,12 @@ Here is an example flake that uses deploy-o-matic:
         moduleArgs = { inherit inputs; };   # inject some arguments to be available to all modules
         nixpkgsConfig = (import ./nixpkgs-global-config.nix);
       };
-
-      lib = nixpkgs.lib;
-      forAllSystems = lib.genAttrs [ "x86_64-linux" "aarch64-darwin" ];
     in {
       nixosConfigurations = dom.nixosConfigurations;
       packages = dom.packages;
       deploy = dom.deploy;
       checks = dom.checks;
       apps = dom.apps;
-
-      devShells = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
-        in {
-          default = pkgs.mkShell {
-            packages = with pkgs; [
-              OVMF.fd
-              findutils
-              gnumake
-              nixfmt-classic
-              rsync
-            ];
-          };
-        });
     };
 }
 ```
