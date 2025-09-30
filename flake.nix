@@ -3,18 +3,13 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
 
-    nixos-generators = {
-      url = "github:nix-community/nixos-generators";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     deploy-rs = {
       url = "github:serokell/deploy-rs";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, nixos-generators, deploy-rs }: {
+  outputs = { self, nixpkgs, deploy-rs }: {
     lib.deployOMatic = { templatesDir, overlaysDir, moduleArgs, nixpkgsConfig }:
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
@@ -30,7 +25,7 @@
         # build a bootable disk image for the host, if configured
         mkImage = host:
           if host ? image then
-            nixos-generators.nixosGenerate (host.image // (nixosSystemArgs host))
+            (mkNixos host).config.system.build.${host.image.format}
           else
             null;
 
@@ -40,7 +35,8 @@
             {
               profiles.system = {
                 user = "root";
-                path = deploy-rs.lib.${host.system}.activate.nixos (mkNixos host);
+                path =
+                  deploy-rs.lib.${host.system}.activate.nixos (mkNixos host);
               };
             } // host.deploy
           else
@@ -48,7 +44,8 @@
 
         nixosSystemArgs = host: {
           system = host.system;
-          specialArgs = moduleArgs // (if host ? moduleArgs then host.moduleArgs else { });
+          specialArgs = moduleArgs
+            // (if host ? moduleArgs then host.moduleArgs else { });
           modules = [
             (templatesDir + "/${host.templateName}")
             {
@@ -62,7 +59,8 @@
         lib = nixpkgs.lib;
 
         allUsedSystems = lib.lists.unique (map (host: host.system) hostList);
-        allSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+        allSystems =
+          [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
         forAllUsedSystems = lib.genAttrs allUsedSystems;
         forAllSystems = lib.genAttrs allSystems;
         pkgsFor = system:
@@ -102,8 +100,8 @@
         nixosConfigurations = mapValues mkNixos hosts;
 
         # expose disk images as packages
-        packages =
-          forAllUsedSystems (system: mapValuesIf mkImage (hostsBySystem system));
+        packages = forAllUsedSystems
+          (system: mapValuesIf mkImage (hostsBySystem system));
 
         # deploy-rs nodes
         deploy = {
@@ -112,8 +110,8 @@
         };
 
         # deploy-rs checks
-        checks = forAllSystems
-          (system: deploy-rs.lib.${system}.deployChecks deploy);
+        checks =
+          forAllSystems (system: deploy-rs.lib.${system}.deployChecks deploy);
 
         apps = forAllSystems (system:
           let pkgs = pkgsFor system;
