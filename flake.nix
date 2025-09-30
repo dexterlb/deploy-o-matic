@@ -60,7 +60,10 @@
 
         # the usual shit
         lib = nixpkgs.lib;
-        allSystems = lib.lists.unique (map (host: host.system) hostList);
+
+        allUsedSystems = lib.lists.unique (map (host: host.system) hostList);
+        allSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+        forAllUsedSystems = lib.genAttrs allUsedSystems;
         forAllSystems = lib.genAttrs allSystems;
         pkgsFor = system:
           import nixpkgs {
@@ -95,12 +98,12 @@
         dirsInDir = dirname:
           lib.attrNames (lib.filterAttrs (_: type: type == "directory")
             (builtins.readDir dirname));
-      in {
+      in rec {
         nixosConfigurations = mapValues mkNixos hosts;
 
         # expose disk images as packages
         packages =
-          forAllSystems (system: mapValuesIf mkImage (hostsBySystem system));
+          forAllUsedSystems (system: mapValuesIf mkImage (hostsBySystem system));
 
         # deploy-rs nodes
         deploy = {
@@ -110,7 +113,7 @@
 
         # deploy-rs checks
         checks = forAllSystems
-          (system: deploy-rs.lib.${system}.deployChecks self.deploy);
+          (system: deploy-rs.lib.${system}.deployChecks deploy);
 
         apps = forAllSystems (system:
           let pkgs = pkgsFor system;
