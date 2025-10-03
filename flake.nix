@@ -10,7 +10,7 @@
   };
 
   outputs = { self, nixpkgs, deploy-rs }: {
-    lib.deployOMatic = { templatesDir, overlaysDir, moduleArgs, nixpkgsConfig }:
+    lib.deployOMatic = { templatesDir, overlaysDir ? null, overlays ? [], moduleArgs ? {}, nixpkgsConfig ? {}, ... }:
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
         templateNames = dirsInDir templatesDir;
@@ -49,7 +49,7 @@
           modules = [
             (templatesDir + "/${host.templateName}")
             {
-              nixpkgs.overlays = overlays;
+              nixpkgs.overlays = allOverlays;
               nixpkgs.config = nixpkgsConfig;
             }
           ];
@@ -65,15 +65,17 @@
         forAllSystems = lib.genAttrs allSystems;
         pkgsFor = system:
           import nixpkgs {
-            inherit system overlays;
+            inherit system;
+            overlays = allOverlays;
             config = nixpkgsConfig;
           };
 
         # nixpkgs overlays (used for custom package overrides)
-        overlays = map (src: import "${overlaysDir}/${src}") overlaySources;
-        overlaySources = lib.attrNames (lib.filterAttrs
+        allOverlays = overlays ++ (if overlaysDir != null then overlaysIn overlaysDir else []);
+        overlaysIn = dir: (map (src: import "${dir}/${src}") (overlaySourcesIn dir));
+        overlaySourcesIn = dir: lib.attrNames (lib.filterAttrs
           (name: type: type == "directory" || lib.hasSuffix ".nix" name)
-          (builtins.readDir overlaysDir));
+          (builtins.readDir dir));
 
         # gives a list of hosts from a single template
         templateHosts = name:
