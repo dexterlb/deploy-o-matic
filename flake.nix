@@ -102,6 +102,8 @@
         nixosConfigurations = mapValues mkNixos hosts;
 
         # expose disk images as packages
+        # TODO: disko now has image generation support: https://github.com/nix-community/disko/blob/master/docs/disko-images.md
+        # with this, image generation can be revamped to be more flexible and to support stuff like embedding secrets
         packages = forAllUsedSystems
           (system: mapValuesIf mkImage (hostsBySystem system));
 
