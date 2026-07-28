@@ -46,7 +46,7 @@
 
             echo "activating profile" >&2
             ${pkgs.openssh}/bin/ssh "${host.deploy.sshUser}@${host.deploy.hostname}" \
-              "${prefixCmd} ${pkgs.bash}/bin/bash -c 'nix-env -p /nix/var/nix/profiles/system --set ${toplevel} && ${toplevel}/bin/switch-to-configuration boot'"
+              "${prefixCmd} ${pkgs.bash}/bin/bash -c 'nix-env -p /nix/var/nix/profiles/system --set ${toplevel} && ${toplevel}/bin/switch-to-configuration $1'"
           ''
         else
           null;
