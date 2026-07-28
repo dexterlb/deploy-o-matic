@@ -2,14 +2,9 @@
   description = "Opinionated wrapper for deployment tools";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-
-    deploy-rs = {
-      url = "github:serokell/deploy-rs";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, deploy-rs }: {
+  outputs = { self, nixpkgs }: {
     lib.deployOMatic = { templatesDir, overlaysDir ? null, overlays ? [], moduleArgs ? {}, nixpkgsConfig ? {}, ... }:
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
@@ -24,23 +19,51 @@
 
         # build a bootable disk image for the host, if configured
         mkImage = host:
+          # TODO: disko now has image generation support: https://github.com/nix-community/disko/blob/master/docs/disko-images.md
+          # with this, image generation can be revamped to be more flexible and to support stuff like embedding secrets
           if host ? image then
             (mkNixos host).config.system.build.${host.image.format}
           else
             null;
 
-        # build a deploy-rs recipe for the host, if configured
-        mkDeployment = host:
-          if host ? deploy then
-            {
-              profiles.system = {
-                user = "root";
-                path =
-                  deploy-rs.lib.${host.system}.activate.nixos (mkNixos host);
-              };
-            } // host.deploy
-          else
-            null;
+        mkDeployer = { host, nativeSystem }: let
+          pkgs = pkgsFor nativeSystem;
+          sysderivation = mkNixos host;
+          toplevel = sysderivation.config.system.build.toplevel;
+          prefixCmd = if host.deploy.sshUser == "root" then "" else "sudo";
+        in if host ? deploy then
+          pkgs.writeShellScriptBin "deploy-${host.hostname}" ''
+            set -euo pipefail
+
+            if [[ $# -ne 1 ]] || ! [[ "$1" =~ ^boot|switch$ ]]; then
+              echo "usage: $0 (boot|switch)" >&2
+              echo "deploys the system configuration of ${host.hostname} to ${host.deploy.hostname}" >&2
+              exit 1
+            fi
+
+            echo "copying closure to ${host.hostname}" >&2
+            ${pkgs.nix}/bin/nix copy --to "ssh://${host.deploy.sshUser}@${host.deploy.hostname}" "${toplevel}"
+
+            echo "activating profile" >&2
+            ${pkgs.openssh}/bin/ssh "${host.deploy.sshUser}@${host.deploy.hostname}" \
+              "${prefixCmd} ${pkgs.bash}/bin/bash -c 'nix-env -p /nix/var/nix/profiles/system --set ${toplevel} && ${toplevel}/bin/switch-to-configuration boot'"
+          ''
+        else
+          null;
+
+        deployerPkgs = system: lib.attrsets.mapAttrs' (name: value:
+          {
+            name = "${name}-deploy";
+            value = mkDeployer { host = value; nativeSystem = system; };
+          }
+        ) hosts;
+
+        imagePkgs = system: lib.attrsets.mapAttrs' (name: value:
+          {
+            name = "${name}-image";
+            inherit value;
+          }
+        ) (mapValuesIf mkImage (hostsBySystem system));
 
         nixosSystemArgs = host: {
           system = host.system;
@@ -101,30 +124,15 @@
       in rec {
         nixosConfigurations = mapValues mkNixos hosts;
 
-        # expose disk images as packages
-        # TODO: disko now has image generation support: https://github.com/nix-community/disko/blob/master/docs/disko-images.md
-        # with this, image generation can be revamped to be more flexible and to support stuff like embedding secrets
         packages = forAllUsedSystems
-          (system: mapValuesIf mkImage (hostsBySystem system));
-
-        # deploy-rs nodes
-        deploy = {
-          magicRollback = true;
-          nodes = mapValuesIf mkDeployment hosts;
-        };
-
-        # deploy-rs checks
-        checks =
-          forAllSystems (system: deploy-rs.lib.${system}.deployChecks deploy);
+          (system:
+            (imagePkgs system)
+            // (deployerPkgs system)
+          );
 
         apps = forAllSystems (system:
           let pkgs = pkgsFor system;
           in {
-            # tiny helper so you can run `nix run .#deploy -- .#hala`
-            deploy = {
-              type = "app";
-              program = "${deploy-rs.packages.${system}.deploy-rs}/bin/deploy";
-            };
             # helper so you can do nixos-rebuild switch locally on the target machine
             nixos-rebuild = {
               type = "app";

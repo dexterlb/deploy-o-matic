@@ -1,7 +1,10 @@
 ## deploy-o-matic
 
-An opinionated flake that uses [nixos-generators](https://github.com/nix-community/nixos-generators),
-[deploy-rs](https://github.com/serokell/deploy-rs) and other tools to deploy nixos systems.
+Specify nixos configurations for multiple machines, and then deploy them in various ways
+(generate an image, deploy over network, etc).
+
+I tried combining tools like `nixos-generators`, `deploy-rs`, `nixos-rebuild`, etc,
+but I didn't like them so I rolled my own.
 
 ### Usage
 
@@ -18,7 +21,7 @@ Here is an example `templates/my-machine/hosts.nix`:
   hostname = "foo";
   system = "x86_64-linux";
   image = {
-    # settings used my nixos-generators
+    # settings used for image generation
     format = "raw";
   };
   moduleArgs = {
@@ -26,12 +29,9 @@ Here is an example `templates/my-machine/hosts.nix`:
     inherit hostname;
   };
   deploy = {
-    # settings used by deploy-rs
+    # settings used for remote deployment
     hostname = "${hostname}.my.domain.example.com";
     sshUser = "my-user";
-
-    remoteBuild = false;
-    fastConnection = true;
   };
 }]
 ```
@@ -72,17 +72,15 @@ Here is an example flake that uses deploy-o-matic:
 
 Then, to create an image, one would just do
 ```
-$ nix build '.#foo'
+$ nix build '.#foo-image'
 ```
 
-Or to deploy to a remote host using deploy-rs:
+Or to deploy the configuration to a remote host:
 ```
-$ nix run '.#deploy' -- '.#foo'
-$ # or:
-$ deploy-rs '.#foo'
+$ nix run '.#foo-deploy'
 ```
 
-Or to deploy the configuration of host foo while logged in locally on foo:
+Or use nixos-rebuild:
 ```
 $ nixos-rebuild switch --flake '.#foo'
 ```
