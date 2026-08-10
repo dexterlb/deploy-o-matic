@@ -9,7 +9,7 @@
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
         templateNames = dirsInDir templatesDir;
-        hostList = builtins.concatLists (map templateHosts templateNames);
+        hostList = builtins.concatLists (map hostsByTemplateName templateNames);
         hosts = mkHostMap hostList;
         hostsBySystem = system:
           mkHostMap (builtins.filter (host: host.system == system) hostList);
@@ -30,7 +30,10 @@
           pkgs = pkgsFor nativeSystem;
           sysderivation = mkNixos host;
           toplevel = sysderivation.config.system.build.toplevel;
-          prefixCmd = if host.deploy.sshUser == "root" then "" else "sudo";
+          prefixCmd = if host.deploy ? sshUser && host.deploy.sshUser == "root" then "" else "sudo";
+          sshStr = if host.deploy ? sshUser
+            then "${host.deploy.sshUser}@${host.deploy.hostname}"
+            else host.deploy.hostname;
         in if host ? deploy then
           pkgs.writeShellScriptBin "deploy-${host.hostname}" ''
             set -euo pipefail
@@ -42,10 +45,10 @@
             fi
 
             echo "copying closure to ${host.hostname}" >&2
-            ${pkgs.nix}/bin/nix copy --to "ssh://${host.deploy.sshUser}@${host.deploy.hostname}" "${toplevel}"
+            ${pkgs.nix}/bin/nix copy --to "ssh://${sshStr}" "${toplevel}"
 
             echo "activating profile" >&2
-            ${pkgs.openssh}/bin/ssh "${host.deploy.sshUser}@${host.deploy.hostname}" \
+            ${pkgs.openssh}/bin/ssh "${sshStr}" \
               "${prefixCmd} ${pkgs.bash}/bin/bash -c 'nix-env -p /nix/var/nix/profiles/system --set ${toplevel} && ${toplevel}/bin/switch-to-configuration $1'"
           ''
         else
@@ -101,12 +104,12 @@
           (builtins.readDir dir));
 
         # gives a list of hosts from a single template
-        templateHosts = name:
+        hostsByTemplateName = name:
           let
             hostsFunc = import "${templatesDir}/${name}/hosts.nix";
             hostsData = hostsFunc {
-              inherit nixpkgs;
-            }; # maybe pass some other convenient stuff here
+              inherit nixpkgs hostsByTemplateName hosts;
+            };
           in map (data: data // { templateName = name; }) hostsData;
 
         # util functions
