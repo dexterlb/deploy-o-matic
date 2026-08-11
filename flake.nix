@@ -84,10 +84,8 @@
         # the usual shit
         lib = nixpkgs.lib;
 
-        allUsedSystems = lib.lists.unique (map (host: host.system) hostList);
         allSystems =
           [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-        forAllUsedSystems = lib.genAttrs allUsedSystems;
         forAllSystems = lib.genAttrs allSystems;
         pkgsFor = system:
           import nixpkgs {
@@ -127,7 +125,7 @@
       in rec {
         nixosConfigurations = mapValues mkNixos hosts;
 
-        packages = forAllUsedSystems
+        packages = forAllSystems
           (system:
             (imagePkgs system)
             // (deployerPkgs system)
