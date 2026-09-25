@@ -30,7 +30,6 @@
           pkgs = pkgsFor nativeSystem;
           sysderivation = mkNixos host;
           toplevel = sysderivation.config.system.build.toplevel;
-          prefixCmd = if host.deploy ? sshUser && host.deploy.sshUser == "root" then "" else "sudo";
           sshStr = if host.deploy ? sshUser
             then "${host.deploy.sshUser}@${host.deploy.hostname}"
             else host.deploy.hostname;
@@ -44,12 +43,11 @@
               exit 1
             fi
 
-            echo "copying closure to ${host.hostname}" >&2
-            ${pkgs.nix}/bin/nix copy --to "ssh://${sshStr}" "${toplevel}"
-
-            echo "activating profile" >&2
-            ${pkgs.openssh}/bin/ssh "${sshStr}" \
-              "${prefixCmd} ${pkgs.bash}/bin/bash -c 'nix-env -p /nix/var/nix/profiles/system --set ${toplevel} && ${toplevel}/bin/switch-to-configuration $1'"
+            ${pkgs.nixos-rebuild-ng}/bin/nixos-rebuild --no-reexec \
+              --target-host "ssh://${sshStr}" \
+              --store-path "${toplevel}" \
+              --elevate=sudo \
+              "$1"
           ''
         else
           null;
