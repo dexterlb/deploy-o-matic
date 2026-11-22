@@ -5,7 +5,7 @@
   };
 
   outputs = { self, nixpkgs }: {
-    lib.deployOMatic = { templatesDir, overlaysDir ? null, overlays ? [], moduleArgs ? {}, nixpkgsConfig ? {}, ... }:
+    lib.deployOMatic = { templatesDir, overlaysDir ? null, overlays ? [], moduleArgs ? {}, nixpkgsConfig ? {}, flake ? null, ... }:
       let
         # get all templates, and from there get all hosts (≥1 hosts per template, usually 1)
         templateNames = dirsInDir templatesDir;
@@ -28,11 +28,23 @@
 
         mkDeployer = { host, nativeSystem }: let
           pkgs = pkgsFor nativeSystem;
-          sysderivation = mkNixos host;
-          toplevel = sysderivation.config.system.build.toplevel;
           sshStr = if host.deploy ? sshUser
             then "${host.deploy.sshUser}@${host.deploy.hostname}"
             else host.deploy.hostname;
+
+          buildHost =
+            if host.deploy ? buildHost then host.deploy.buildHost
+            else if host.deploy.remoteBuild or false then sshStr
+            else null;
+
+          # naming the toplevel makes it a dependency of this script, so nix
+          # builds the whole system here; the remote variant must not mention it
+          localBuildArgs = ''--store-path "${(mkNixos host).config.system.build.toplevel}"'';
+          remoteBuildArgs = ''--flake "${flakeRef}#${host.hostname}" --build-host "ssh://${buildHost}" --use-substitutes'';
+
+          flakeRef = if flake != null then "${flake}" else throw
+            ("deploy-o-matic: building ${host.hostname} on ${buildHost} needs a reference"
+              + " to the flake itself; pass `flake = self;` to deployOMatic");
         in if host ? deploy then
           pkgs.writeShellScriptBin "deploy-${host.hostname}" ''
             set -euo pipefail
@@ -45,7 +57,7 @@
 
             ${pkgs.nixos-rebuild-ng}/bin/nixos-rebuild --no-reexec \
               --target-host "ssh://${sshStr}" \
-              --store-path "${toplevel}" \
+              ${if buildHost == null then localBuildArgs else remoteBuildArgs} \
               --elevate=sudo \
               "$1"
           ''
