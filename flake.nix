@@ -71,7 +71,7 @@
           specialArgs = moduleArgs
             // (if host ? moduleArgs then host.moduleArgs else { });
           modules = [
-            (templatesDir + "/${host.templateName}")
+            (lib.path.append templatesDir host.templateName)
             {
               nixpkgs.overlays = allOverlays;
               nixpkgs.config = nixpkgsConfig;
@@ -94,7 +94,7 @@
 
         # nixpkgs overlays (used for custom package overrides)
         allOverlays = overlays ++ (if overlaysDir != null then overlaysIn overlaysDir else []);
-        overlaysIn = dir: (map (src: import "${dir}/${src}") (overlaySourcesIn dir));
+        overlaysIn = dir: (map (src: import (lib.path.append dir src)) (overlaySourcesIn dir));
         overlaySourcesIn = dir: lib.attrNames (lib.filterAttrs
           (name: type: type == "directory" || lib.hasSuffix ".nix" name)
           (builtins.readDir dir));
@@ -102,7 +102,8 @@
         # gives a list of hosts from a single template
         hostsByTemplateName = name:
           let
-            hostsFunc = import "${templatesDir}/${name}/hosts.nix";
+            templateDir = lib.path.append templatesDir name;
+            hostsFunc = import (lib.path.append templateDir "hosts.nix");
             hostsData = hostsFunc {
               inherit nixpkgs hostsByTemplateName hosts;
             };
