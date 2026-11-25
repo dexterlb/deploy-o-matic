@@ -32,6 +32,11 @@ Here is an example `templates/my-machine/hosts.nix`:
     # settings used for remote deployment
     hostname = "${hostname}.my.domain.example.com";
     sshUser = "my-user";
+
+    # build the system on the machine we deploy to, instead of locally
+    remoteBuild = true;
+    # ...or on some other machine (an ssh destination); takes precedence
+    # buildHost = "my-user@builder.example.com";
   };
 }]
 ```
@@ -59,6 +64,7 @@ Here is an example flake that uses deploy-o-matic:
         overlaysDir = ./overlays;           # directlry with package overlays
         moduleArgs = { inherit inputs; };   # inject some arguments to be available to all modules
         nixpkgsConfig = (import ./nixpkgs-global-config.nix);
+        flake = self;                       # only needed for deploy.remoteBuild / deploy.buildHost
       };
     in {
       nixosConfigurations = dom.nixosConfigurations;
@@ -84,3 +90,13 @@ Or use nixos-rebuild:
 ```
 $ nixos-rebuild switch --flake '.#foo'
 ```
+
+### Where the system is built
+
+By default the deployer builds the system locally and then copies the result to
+the target, which is unpleasant when the machine you deploy from is slow, is of
+a different architecture, or is on the thin end of the link.
+
+`deploy.remoteBuild = true` build on the remote host.
+`deploy.buildHost = "user@some-builder"` can specify a third machine do to the build.
+
